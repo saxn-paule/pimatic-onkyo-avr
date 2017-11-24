@@ -10,6 +10,7 @@ module.exports = (env) ->
 	power = null
 	currentVolume = -100
 	currentDisplay = "Test"
+	mute = false
 
 	class OnkyoPlugin extends env.plugins.Plugin
 		init: (app, @framework, @config) =>
@@ -82,7 +83,10 @@ module.exports = (env) ->
 
 			if message.hasOwnProperty 'MVL'
 				currentVolume = message["MVL"]/2 - 82
+				env.logger.info "Volume: " + currentVolume
 
+			if message.hasOwnProperty 'MUTE'
+				mute = message["MUTE"]
 
 		destroy: ->
 			super()
@@ -123,6 +127,44 @@ module.exports = (env) ->
 			onkyoClient.PwrState (obj) ->
 				env.logger.info obj
 
+		setSource: (src) ->
+			onkyoClient.SetSource (src, cb) ->
+				env.logger.info cb
+				return
+
+		changeVolume: (vol) ->
+			switch vol
+				when "mute"
+					onkyoClient.Mute (error, ok) ->
+						if error
+							env.logger.error error
+						if ok
+							env.logger.info ok
+						return
+				when "unmute"
+					onkyoClient.UnMute (error, ok) ->
+						if error
+							env.logger.error error
+						if ok
+							env.logger.info ok
+						return
+				when "up"
+					onkyoClient.VolUp (error, ok) ->
+						if error
+							env.logger.error error
+						if ok
+							env.logger.info ok
+						return
+				when "down"
+					onkyoClient.VolDown (error, ok) ->
+						if error
+							env.logger.error error
+						if ok
+							env.logger.info ok
+						return
+				else
+					env.logger.info "unknown command: " + vol
+
 		executeAction: (simulate) ->
 			@framework.variableManager.evaluateStringExpression(@commandTokens).then( (command) =>
 				if simulate
@@ -131,15 +173,27 @@ module.exports = (env) ->
 					if not connected
 						@connect()
 
-					switch command
-						when 'Power ON'
-							@powerOn()
-						when 'Power OFF'
-							@powerOff()
-						when 'Power STATUS'
-							@powerStatus()
-						else
-							env.logger.info "unknown command" + command
+					if command.startsWith('SOURCE ') and command.indexOf(" ") > 0
+						source = (command.split " ")[1]
+						@setSource(source)
+					else
+						switch command
+							when 'Power ON'
+								@powerOn()
+							when 'Power OFF'
+								@powerOff()
+							when 'Power STATUS'
+								@powerStatus()
+							when 'Volume MUTE'
+								@changeVolume("mute")
+							when 'Volume UNMUTE'
+								@changeVolume("unmute")
+							when 'volume'
+								@changeVolume("up")
+							when 'Volume DOWN'
+								@changeVolume("down")
+							else
+								env.logger.info "unknown command" + command
 
 					env.logger.info "Sending...."
 					env.logger.info command
@@ -186,16 +240,22 @@ module.exports = (env) ->
 			display:
 				description: 'the AVRs display'
 				type: t.string
+			mute:
+				description: 'the AVRs mute status'
+				type: t.boolean
 
 		constructor: (@config, lastState) ->
 			env.logger.info @config
 			@name = @config.name
 			@id = @config.id
+			@volume = currentVolume
+			@display = currentDisplay
+			@mute = mute or false
 
-			@volValue = lastState?["volume"]?.value
+			@volume = lastState?["volume"]?.value
 
 			@getVolume = () =>
-				if @volValue? then Promise.resolve(@volValue)
+				if @volume? then Promise.resolve(@volume)
 				else @_getUpdatedAttributeValue()
 
 			updateValue = =>
@@ -213,7 +273,7 @@ module.exports = (env) ->
 			super()
 
 		_getUpdatedAttributeValue: () ->
-				return @volValue
+				return @volume
 
 	onkyoPlugin = new OnkyoPlugin
 	return onkyoPlugin
