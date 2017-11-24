@@ -8,6 +8,8 @@ module.exports = (env) ->
 	onkyoClient = null
 	connected = false
 	power = null
+	currentVolume = -100
+	currentDisplay = "Test"
 
 	class OnkyoPlugin extends env.plugins.Plugin
 		init: (app, @framework, @config) =>
@@ -15,6 +17,11 @@ module.exports = (env) ->
 			@framework.ruleManager.addActionProvider(new OnkyoActionProvider(@framework))
 
 			deviceConfigDef = require("./device-config-schema")
+
+			@framework.deviceManager.registerDeviceClass("OnkyoSensor", {
+				configDef: deviceConfigDef.OnkyoSensor,
+				createCallback: (config, lastState) -> new OnkyoSensor(config, lastState)
+			})
 
 			@framework.deviceManager.registerDeviceClass("OnkyoDevice",{
 				configDef : deviceConfigDef.OnkyoDevice,
@@ -73,6 +80,8 @@ module.exports = (env) ->
 			if message.hasOwnProperty 'PWR'
 				power = message["PWR"]
 
+			if message.hasOwnProperty 'MVL'
+				currentVolume = message["MVL"]/2 - 82
 
 
 		destroy: ->
@@ -168,6 +177,43 @@ module.exports = (env) ->
 			else
 				return null
 
+
+	class OnkyoSensor extends env.devices.Sensor
+		attributes:
+			volume:
+				description: 'the AVRs volume'
+				type: t.number
+			display:
+				description: 'the AVRs display'
+				type: t.string
+
+		constructor: (@config, lastState) ->
+			env.logger.info @config
+			@name = @config.name
+			@id = @config.id
+
+			@volValue = lastState?["volume"]?.value
+
+			@getVolume = () =>
+				if @volValue? then Promise.resolve(@volValue)
+				else @_getUpdatedAttributeValue()
+
+			updateValue = =>
+				if @config.interval > 0
+					@_updateValueTimeout = null
+					@_getUpdatedAttributeValue().finally( =>
+						@_updateValueTimeout = setTimeout(updateValue, @config.interval)
+					)
+
+			super()
+			updateValue()
+
+		destroy: () ->
+			clearTimeout @_updateValueTimeout if @_updateValueTimeout?
+			super()
+
+		_getUpdatedAttributeValue: () ->
+				return @volValue
 
 	onkyoPlugin = new OnkyoPlugin
 	return onkyoPlugin
