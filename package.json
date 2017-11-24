@@ -1,0 +1,32 @@
+{ "name": "pimatic-onkyo-avr",
+  "description": "Plugin for controlling Onkyo and newer Pioneer receivers",
+  "author": "Paul Schmidt",
+  "license": "MIT",
+  "main": "onkyo",
+  "files": [
+    "onkyo.coffee",
+    "README.md",
+    "onkyo-config-schema.coffee",
+    "device-config-schema.coffee",
+    "app"
+  ],
+  "version": "0.0.1",
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/saxn-paule/pimatic-onkyo-avr.git"
+  },
+  "bugs": {
+    "url": "https://github.com/saxn-paule/pimatic-onkyo-avr/issues"
+  },
+  "configSchema": "onkyo-config-schema.coffee",
+  "dependencies": {
+    "onkyo.js": "latest"
+  },
+  "peerDependencies": {
+    "pimatic": "0.9.*"
+  },
+  "engines": {
+    "node": ">0.8.x",
+    "npm": ">1.1.x"
+  }
+}
