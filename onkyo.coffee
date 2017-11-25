@@ -21,7 +21,7 @@ module.exports = (env) ->
 
 			@framework.deviceManager.registerDeviceClass("OnkyoSensor", {
 				configDef: deviceConfigDef.OnkyoSensor,
-				createCallback: (config, lastState) -> new OnkyoSensor(config, lastState)
+				createCallback: (config, lastState) => new OnkyoSensor(config, lastState)
 			})
 
 			@framework.deviceManager.registerDeviceClass("OnkyoDevice",{
@@ -256,14 +256,27 @@ module.exports = (env) ->
 
 			@getVolume = () =>
 				if @volume? then Promise.resolve(@volume)
-				else @_getUpdatedAttributeValue()
+				else @_getUpdatedVolume("volume")
+
+			@getDisplay = () =>
+				if @display? then Promise.resolve(@display)
+				else @_getUpdatedDisplay("display")
+
+			@getMute = () =>
+				if @mute? then Promise.resolve(@mute)
+				else @_getUpdatedMute("mute")
 
 			updateValue = =>
 				if @config.interval > 0
 					@_updateValueTimeout = null
-					@_getUpdatedAttributeValue().finally( =>
-						@_updateValueTimeout = setTimeout(updateValue, @config.interval)
+					@_getUpdatedVolume().finally( =>
+						@_getUpdatedDisplay().finally( =>
+							@_getUpdatedMute().finally( =>
+								@_updateValueTimeout = setTimeout(updateValue, @config.interval)
+							)
+						)
 					)
+
 
 			super()
 			updateValue()
@@ -272,8 +285,17 @@ module.exports = (env) ->
 			clearTimeout @_updateValueTimeout if @_updateValueTimeout?
 			super()
 
-		_getUpdatedAttributeValue: () ->
-				return @volume
+		_getUpdatedVolume: () ->
+			@volume = currentVolume
+			return Promise.resolve @volume
+
+		_getUpdatedDisplay: () ->
+			@display = currentDisplay
+			return Promise.resolve @display
+
+		_getUpdatedMute: () ->
+			@mute = mute
+			return Promise.resolve @mute
 
 	onkyoPlugin = new OnkyoPlugin
 	return onkyoPlugin
