@@ -31,10 +31,20 @@ module.exports = {
 						volume:
 							description: "AVR volume"
 							type: "number"
+							unit: "dB"
+						mute:
+							description: "AVR mute status"
+							type: "boolean"
+						source:
+							description: "AVR source"
+							type: "string"
+						sound:
+							description: "AVR sound status"
+							type: "string"
 			interval:
 				description: "the time in ms, the command gets executed to get a new sensor value"
 				type: "integer"
-				default: 5000
+				default: 2000
 		}
 	}
 }
