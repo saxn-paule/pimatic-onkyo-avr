@@ -44,10 +44,16 @@ module.exports = (env) ->
 				log: true
 				ip: @ip)
 
-			onkyoClient.Connect ->
+			onkyoClient.Connect =>
+				return
 
 			onkyoClient.on 'error', (err) ->
-				env.logger.error err
+				if err
+					if err.code is "ETIMEDOUT"
+						env.logger.warn "Cannot connect to " + err.address + ":" + err.port
+					else
+						env.logger.error err
+
 				return
 
 			onkyoClient.on 'detected', (device) ->
@@ -124,8 +130,13 @@ module.exports = (env) ->
 				return
 
 		powerStatus: ->
-			onkyoClient.PwrState (obj) ->
-				env.logger.info obj
+			if not connected
+				onkyoClient.Connect ->
+					onkyoClient.PwrState (obj) ->
+						env.logger.info obj
+			else
+				onkyoClient.PwrState (obj) ->
+					env.logger.info obj
 
 		setSource: (src) ->
 			onkyoClient.SetSource (src, cb) ->
