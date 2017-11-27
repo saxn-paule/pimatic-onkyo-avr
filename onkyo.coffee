@@ -43,7 +43,7 @@ module.exports = (env) ->
 			@ip = @config.ip or "192.168.0.15"
 
 			onkyoClient = Onkyo.init(
-				log: true
+				log: false
 				ip: @ip)
 
 			onkyoClient.Connect =>
@@ -144,9 +144,12 @@ module.exports = (env) ->
 					env.logger.info obj
 
 		setSource: (src) ->
-			onkyoClient.SetSource (src, cb) ->
+			onkyoClient.SetSource(src, cb) ->
 				env.logger.info cb
 				return
+
+		sendCommand: (cmd) ->
+			onkyoClient.SendCommand((cmd.split ".")[0], (cmd.split ".")[1])
 
 		changeVolume: (vol) ->
 			switch vol
@@ -189,8 +192,8 @@ module.exports = (env) ->
 					if not connected
 						@connect()
 
-					if command.startsWith('SOURCE ') and command.indexOf(" ") > 0
-						source = (command.split " ")[1]
+					if command.startsWith('SOURCE.') and command.indexOf(".") > 0
+						source = (command.split ".")[1]
 						@setSource(source)
 					else
 						switch command
@@ -209,10 +212,8 @@ module.exports = (env) ->
 							when 'Volume DOWN'
 								@changeVolume("down")
 							else
-								env.logger.info "unknown command" + command
+								@sendCommand(command)
 
-					env.logger.info "Sending...."
-					env.logger.info command
 					return Promise.resolve("done")
 			)
 
