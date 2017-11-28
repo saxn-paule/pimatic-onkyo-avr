@@ -197,17 +197,17 @@ module.exports = (env) ->
 						@setSource(source)
 					else
 						switch command
-							when 'Power ON'
+							when 'Power.ON'
 								@powerOn()
-							when 'Power OFF'
+							when 'Power.OFF'
 								@powerOff()
-							when 'Power STATUS'
+							when 'Power.STATUS'
 								@powerStatus()
-							when 'Volume MUTE'
+							when 'Volume.MUTE'
 								@changeVolume("mute")
-							when 'Volume UNMUTE'
+							when 'Volume.UNMUTE'
 								@changeVolume("unmute")
-							when 'volume'
+							when 'Volume.UP'
 								@changeVolume("up")
 							when 'Volume DOWN'
 								@changeVolume("down")
