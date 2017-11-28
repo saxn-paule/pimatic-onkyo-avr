@@ -126,37 +126,46 @@ There is only one (self explaining) configuration parameter
 
 ### Sample Plugin Config:
 ```javascript
-    {
-      "plugin": "onkyo-avr",
-      "ip": "192.168.0.15",
-    }
+{
+  "plugin": "onkyo-avr"
+}
+```
+
+### Sample Device Config:
+```javascript
+{
+  "class": "OnkyoDevice",
+  "ip": "192.168.0.15",
+  "id": "vsx-831",
+  "name": "VSX-831"
+}
 ```
 
 ### Sample Sensor Config:
 ```javascript
+{
+  "class": "OnkyoSensor",
+  "id": "avrsensor",
+  "name": "Display",
+  "attributes": [
     {
-      "class": "OnkyoSensor",
-      "id": "avrsensor",
-      "name": "Display",
-      "attributes": [
-        {
-          "name": "volume"
-        },
-        {
-          "name": "sound"
-        },
-        {
-          "name": "source"
-        }
-      ],
-      "xAttributeOptions": [
-        {
-          "name": "volume",
-          "displaySparkline": false,
-          "hidden": false
-        }
-      ]
+      "name": "volume"
+    },
+    {
+      "name": "sound"
+    },
+    {
+      "name": "source"
     }
+  ],
+  "xAttributeOptions": [
+    {
+      "name": "volume",
+      "displaySparkline": false,
+      "hidden": false
+    }
+  ]
+}
 ```
 
 # Beware
