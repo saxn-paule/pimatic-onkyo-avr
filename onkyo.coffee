@@ -4,52 +4,69 @@ module.exports = (env) ->
 	assert = env.require 'cassert'
 	M = env.matcher
 	t = env.require('decl-api').types
-	Onkyo = require 'onkyo.js'
-	onkyoClient = null
-	connected = false
-	power = null
-	currentVolume = -100
-	currentDisplay = "Test"
-	currentSource = ""
-	currentSoundSetting = ""
-	mute = false
+	Onkyo = require('./lib/onkyo.js/onkyo.js')
 
-	class OnkyoPlugin extends env.plugins.Plugin
+	class OnkyoAvrPlugin extends env.plugins.Plugin
 		init: (app, @framework, @config) =>
-
-			@framework.ruleManager.addActionProvider(new OnkyoActionProvider(@framework))
 
 			deviceConfigDef = require("./device-config-schema")
 
-			@framework.deviceManager.registerDeviceClass("OnkyoSensor", {
-				configDef: deviceConfigDef.OnkyoSensor,
-				createCallback: (config, lastState) => new OnkyoSensor(config, lastState)
+			@framework.deviceManager.registerDeviceClass("OnkyoAvrDevice",{
+				configDef : deviceConfigDef.OnkyoAvrDevice,
+				createCallback : (config, lastState) => new OnkyoAvrDevice(config, lastState, this )
 			})
 
-			@framework.deviceManager.registerDeviceClass("OnkyoDevice",{
-				configDef : deviceConfigDef.OnkyoDevice,
-				createCallback : (config) => new OnkyoDevice(config,this)
-			})
+			@framework.ruleManager.addActionProvider(new OnkyoActionProvider(@framework))
 
-	class OnkyoDevice extends env.devices.Device
+	class OnkyoAvrDevice extends env.devices.Device
 		attributes:
 			ip:
 				description: 'the AVRs IP address'
 				type: t.string
+			volume:
+				description: 'the AVRs volume'
+				type: t.number
+				unit: "dB"
+			sound:
+				description: 'the current sound setting'
+				type: t.string
+			source:
+				description: 'the current source'
+				type: t.string
+			mute:
+				description: 'the mute state'
+				type: t.string
 
-		constructor: (@config, @plugin) ->
+		constructor: (@config, @plugin, lastState) ->
+			env.logger.info @config
 			@id = @config.id
 			@name = @config.name
 			@ip = @config.ip or "192.168.0.15"
+			@interval = @config.interval || 2000
+			@volume = -100
+			@display = ""
+			@mute = ""
+			@source = ""
+			@sound = ""
+			@power = "off"
+			@onkyoClient = null
+			@connected = false
 
-			onkyoClient = Onkyo.init(
-				log: false
+			@volume = lastState?["volume"]?.value
+			@display = lastState?["display"]?.value
+			@mute = lastState?["mute"]?.value
+			@source = lastState?["source"]?.value
+			@sound = lastState?["sound"]?.value
+
+
+			@onkyoClient = Onkyo.init(
+				log: true
 				ip: @ip)
 
-			onkyoClient.Connect =>
+			@onkyoClient.Connect =>
 				return
 
-			onkyoClient.on 'error', (err) ->
+			@onkyoClient.on 'error', (err) ->
 				if err
 					if err.code is "ETIMEDOUT"
 						env.logger.warn "Cannot connect to " + err.address + ":" + err.port
@@ -58,19 +75,35 @@ module.exports = (env) ->
 
 				return
 
-			onkyoClient.on 'detected', (device) ->
+			@onkyoClient.on 'detected', (device) ->
 				env.logger.info "device: " + device
 				return
 
-			onkyoClient.on 'connected', (host) ->
+			@onkyoClient.on 'connected', (host) ->
 				env.logger.info 'connected to: ' + JSON.stringify(host)
-				connected = true
+				@connected = true
 
-			onkyoClient.on 'msg', (msg) =>
+			@onkyoClient.on 'msg', (msg) =>
 				@parseMessage(msg)
 				return
 
+			updateValue = =>
+				if @interval > 0
+					@_updateValueTimeout = null
+					@_getUpdatedVolume().finally( =>
+						@_getUpdatedDisplay().finally( =>
+							@_getUpdatedMute().finally( =>
+								@_getUpdatedSource().finally( =>
+									@_getUpdatedSound().finally( =>
+										@_updateValueTimeout = setTimeout(updateValue, @interval)
+									)
+								)
+							)
+						)
+					)
+
 			super()
+			updateValue()
 
 		getIp: -> Promise.resolve(@ip)
 
@@ -78,28 +111,91 @@ module.exports = (env) ->
 			if @ip is value then return
 			@ip = value
 
+		getInterval: -> Promise.resolve(@interval)
+
+		setInterval: (value) ->
+			if @interval is value then return
+			@interval = value
+
+		getVolume: ->
+			if @volume? then Promise.resolve(@volume)
+			else @_getUpdatedVolume("volume")
+
+		getDisplay: ->
+			if @display? then Promise.resolve(@display)
+			else @_getUpdatedDisplay("display")
+
+		getMute: ->
+			if @mute? then Promise.resolve(@mute)
+			else @_getUpdatedMute("mute")
+
+		getSource: ->
+			if @source? then Promise.resolve(@source)
+			else @_getUpdatedSource("source")
+
+		getSound: ->
+			if @sound? then Promise.resolve(@sound)
+			else @_getUpdatedSound("sound")
+
+		_getUpdatedVolume: () =>
+			@emit "volume", @volume
+			return Promise.resolve @volume
+
+		_getUpdatedDisplay: () =>
+			@emit "display", @display
+			return Promise.resolve @display
+
+		_getUpdatedMute: () =>
+			if not @mute? or @mute is ""
+				@onkyoClient.SendCommand("AUDIO", "MuteQstn")
+			else
+				@emit "mute", @mute
+
+			return Promise.resolve @mute
+
+		_getUpdatedSource: () =>
+			if not @source? or @source is ""
+				@onkyoClient.SendCommand("SOURCE_SELECT", "QSTN")
+			else
+				@emit "source", @source
+
+			return Promise.resolve @source
+
+		_getUpdatedSound: () =>
+			if not @sound? or @sound is ""
+				@onkyoClient.SendCommand("SOUND_MODES", "QSTN")
+			else
+				@emit "sound", @sound
+
+			return Promise.resolve @sound
+
 		parseMessage: (msg) ->
+			env.logger.info msg
 			if typeof msg isnt 'object'
 				message = JSON.parse(msg)
 			else
 				message = msg
 
 			if message.hasOwnProperty 'PWR'
-				power = message["PWR"]
-
-			if message.hasOwnProperty 'MVL'
-				currentVolume = message["MVL"]/2 - 82
+				@power = message["PWR"]
 
 			if message.hasOwnProperty 'MUTE'
-				mute = message["MUTE"]
+				@mute = message["MUTE"]
+
+			if message.hasOwnProperty 'MVL'
+				@volume = message["MVL"]/2 - 82
+
+			if message.hasOwnProperty 'MUTE'
+				@mute = message["MUTE"]
 
 			if message.hasOwnProperty 'LMD'
-				currentSoundSetting = message["LMD"]
+				@sound = message["LMD"]
 
 			if message.hasOwnProperty 'SLI'
-				currentSource = message["SLI"]
+				@source = message["SLI"]
 
 		destroy: ->
+			clearTimeout @_updateValueTimeout if @_updateValueTimeout?
 			super()
 
 
@@ -248,121 +344,5 @@ module.exports = (env) ->
 			else
 				return null
 
-
-	class OnkyoSensor extends env.devices.Sensor
-
-		attributes:
-			volume:
-				description: 'the AVRs volume'
-				type: t.number
-				unit: "dB"
-			sound:
-				description: 'the current sound setting'
-				type: t.string
-			source:
-				description: 'the current source'
-				type: t.string
-
-		###
-			display:
-				description: 'the AVRs display'
-				type: t.string
-			mute:
-				description: 'the AVRs mute status'
-				type: t.boolean
-		###
-
-		constructor: (@config, lastState) ->
-			@name = @config.name
-			@id = @config.id
-			@volume = currentVolume
-			@display = currentDisplay
-			@mute = mute or false
-			@source = currentSource or ""
-			@sound = currentSoundSetting or ""
-
-			@volume = lastState?["volume"]?.value
-			@display = lastState?["display"]?.value
-			@mute = lastState?["mute"]?.value
-			@source = lastState?["source"]?.value
-			@sound = lastState?["sound"]?.value
-
-			@getVolume = () =>
-				if @volume? then Promise.resolve(@volume)
-				else @_getUpdatedVolume("volume")
-
-			@getDisplay = () =>
-				if @display? then Promise.resolve(@display)
-				else @_getUpdatedDisplay("display")
-
-			@getMute = () =>
-				if @mute? then Promise.resolve(@mute)
-				else @_getUpdatedMute("mute")
-
-			@getSource = () =>
-				if @source? then Promise.resolve(@source)
-				else @_getUpdatedSource("source")
-
-			@getSound = () =>
-				if @sound? then Promise.resolve(@sound)
-				else @_getUpdatedSound("sound")
-
-			updateValue = =>
-				if @config.interval > 0
-					@_updateValueTimeout = null
-					@_getUpdatedVolume().finally( =>
-						@_getUpdatedDisplay().finally( =>
-							@_getUpdatedMute().finally( =>
-								@_getUpdatedSource().finally( =>
-									@_getUpdatedSound().finally( =>
-										@_updateValueTimeout = setTimeout(updateValue, @config.interval)
-									)
-								)
-							)
-						)
-					)
-
-
-			super()
-			updateValue()
-
-		destroy: () ->
-			clearTimeout @_updateValueTimeout if @_updateValueTimeout?
-			super()
-
-		_getUpdatedVolume: () =>
-			@volume = currentVolume
-			@emit "volume", @volume
-			return Promise.resolve @volume
-
-		_getUpdatedDisplay: () =>
-			@display = currentDisplay
-			@emit "display", currentDisplay
-			return Promise.resolve @display
-
-		_getUpdatedMute: () =>
-			@mute = mute
-			@emit "mute", mute
-			return Promise.resolve @mute
-
-		_getUpdatedSource: () =>
-			if currentSource is ""
-				onkyoClient.SendCommand("SOURCE_SELECT", "QSTN")
-			else
-				@source = currentSource
-				@emit "source", currentSource
-
-			return Promise.resolve @source
-
-		_getUpdatedSound: () =>
-			if currentSoundSetting is ""
-				onkyoClient.SendCommand("SOUND_MODES", "QSTN")
-			else
-				@sound = currentSoundSetting
-				@emit "sound", currentSoundSetting
-
-			return Promise.resolve @sound
-
-
-	onkyoPlugin = new OnkyoPlugin
-	return onkyoPlugin
+	onkyoAvrPlugin = new OnkyoAvrPlugin
+	return onkyoAvrPlugin
