@@ -2,6 +2,7 @@ module.exports = (env) ->
 
 	Promise = env.require 'bluebird'
 	assert = env.require 'cassert'
+	_ = require 'lodash'
 	M = env.matcher
 	t = env.require('decl-api').types
 	Onkyo = require('./lib/onkyo.js/onkyo.js')
@@ -16,7 +17,7 @@ module.exports = (env) ->
 				createCallback : (config, lastState) => new OnkyoAvrDevice(config, lastState, this )
 			})
 
-			@framework.ruleManager.addActionProvider(new OnkyoActionProvider(@framework))
+			@framework.ruleManager.addActionProvider(new SendCommandActionProvider(@framework))
 
 	class OnkyoAvrDevice extends env.devices.Device
 		attributes:
@@ -37,49 +38,62 @@ module.exports = (env) ->
 				description: 'the mute state'
 				type: t.string
 
+		actions:
+			turnOn:
+				description: "Turns the switch on"
+			turnOff:
+				description: "Turns the switch off"
+			changeStateTo:
+				description: "Changes the switch to on or off"
+				params:
+					state:
+						type: t.boolean
+			sendCommand:
+				description: 'The command to send to the Onkyo AVR'
+				params:
+					command:
+						type: t.string
+
+
 		constructor: (@config, @plugin, lastState) ->
-			env.logger.info @config
 			@id = @config.id
 			@name = @config.name
 			@ip = @config.ip or "192.168.0.15"
 			@interval = @config.interval || 2000
-			@volume = -100
-			@display = ""
-			@mute = ""
-			@source = ""
-			@sound = ""
 			@power = "off"
 			@onkyoClient = null
 			@connected = false
 
-			@volume = lastState?["volume"]?.value
-			@display = lastState?["display"]?.value
-			@mute = lastState?["mute"]?.value
-			@source = lastState?["source"]?.value
-			@sound = lastState?["sound"]?.value
+			@volume = lastState?["volume"]?.value or -100
+			@display = lastState?["display"]?.value or ""
+			@mute = lastState?["mute"]?.value or false
+			@source = lastState?["source"]?.value or ""
+			@sound = lastState?["sound"]?.value or ""
 
-
-			@onkyoClient = Onkyo.init(
-				log: true
-				ip: @ip)
+			@init()
 
 			@onkyoClient.Connect =>
 				return
 
-			@onkyoClient.on 'error', (err) ->
+			@onkyoClient.on 'error', (err) =>
 				if err
-					if err.code is "ETIMEDOUT"
+					if err.code is "ETIMEDOUT" or err.code is "EHOSTUNREACH"
 						env.logger.warn "Cannot connect to " + err.address + ":" + err.port
+						@connected = false
+					else if err.code is "ECONNRESET"
+						env.logger.warn "Connection to avr device was lost!"
+						@connected = false
 					else
+						env.logger.warn "an unknow error occured:"
 						env.logger.error err
 
 				return
 
-			@onkyoClient.on 'detected', (device) ->
+			@onkyoClient.on 'detected', (device) =>
 				env.logger.info "device: " + device
 				return
 
-			@onkyoClient.on 'connected', (host) ->
+			@onkyoClient.on 'connected', (host) =>
 				env.logger.info 'connected to: ' + JSON.stringify(host)
 				@connected = true
 
@@ -90,8 +104,8 @@ module.exports = (env) ->
 			updateValue = =>
 				if @interval > 0
 					@_updateValueTimeout = null
-					@_getUpdatedVolume().finally( =>
-						@_getUpdatedDisplay().finally( =>
+					@_getUpdatedDisplay().finally( =>
+						@_getUpdatedVolume().finally( =>
 							@_getUpdatedMute().finally( =>
 								@_getUpdatedSource().finally( =>
 									@_getUpdatedSound().finally( =>
@@ -104,6 +118,32 @@ module.exports = (env) ->
 
 			super()
 			updateValue()
+
+		# Returns a promise
+		turnOn: ->
+			@changeStateTo("on")
+
+		# Returns a promise
+		turnOff: ->
+			@changeStateTo("off")
+
+		# Returns a promise that is fulfilled when done.
+		changeStateTo: (state) ->
+			switch state
+				when 'on'
+					@onkyoClient.PwrOn (error, ok) ->
+						if error?
+							env.logger.error error
+						if ok?
+							@power = "on"
+						return
+				when 'off'
+					@onkyoClient.PwrOff (error, ok) ->
+						if error?
+							env.logger.error error
+						if ok?
+							@power = "off"
+						return
 
 		getIp: -> Promise.resolve(@ip)
 
@@ -138,7 +178,12 @@ module.exports = (env) ->
 			else @_getUpdatedSound("sound")
 
 		_getUpdatedVolume: () =>
-			@emit "volume", @volume
+			if not @volume? or @volume is -100
+				if @connected
+					@sendCommand("AUDIO.Volume")
+			else
+				@emit "volume", @volume
+
 			return Promise.resolve @volume
 
 		_getUpdatedDisplay: () =>
@@ -147,7 +192,8 @@ module.exports = (env) ->
 
 		_getUpdatedMute: () =>
 			if not @mute? or @mute is ""
-				@onkyoClient.SendCommand("AUDIO", "MuteQstn")
+				if @connected
+					@sendCommand("AUDIO.MuteQstn")
 			else
 				@emit "mute", @mute
 
@@ -155,7 +201,8 @@ module.exports = (env) ->
 
 		_getUpdatedSource: () =>
 			if not @source? or @source is ""
-				@onkyoClient.SendCommand("SOURCE_SELECT", "QSTN")
+				if @connected
+					@sendCommand("SOURCE_SELECT.QSTN")
 			else
 				@emit "source", @source
 
@@ -163,14 +210,14 @@ module.exports = (env) ->
 
 		_getUpdatedSound: () =>
 			if not @sound? or @sound is ""
-				@onkyoClient.SendCommand("SOUND_MODES", "QSTN")
+				if @connected
+					@sendCommand("SOUND_MODES.QSTN")
 			else
 				@emit "sound", @sound
 
 			return Promise.resolve @sound
 
 		parseMessage: (msg) ->
-			env.logger.info msg
 			if typeof msg isnt 'object'
 				message = JSON.parse(msg)
 			else
@@ -194,84 +241,92 @@ module.exports = (env) ->
 			if message.hasOwnProperty 'SLI'
 				@source = message["SLI"]
 
-		destroy: ->
-			clearTimeout @_updateValueTimeout if @_updateValueTimeout?
-			super()
-
-
-	####### ACTION HANDLER ######
-	class OnkyoActionHandler extends env.actions.ActionHandler
-		constructor: (@framework, @commandTokens) ->
+		init: ->
+			env.logger.info "initializing new Onkyo client..."
+			@onkyoClient = Onkyo.init(
+				log: false
+				ip: @ip)
 
 		connect: ->
-			if not connected
-				onkyoClient.Connect ->
-					return
+			if not @connected? or !@connected
+				if @onkyoClient?
+					@onkyoClient.Connect ->
+						@connected = true
+						return
+				else
+					@init()
 
 		disconnect: ->
-			if connected
-				onkyoClient.Close ->
-					connected = false
+			if @connected
+				@onkyoClient.Close ->
+					@connected = false
 					return
 
-		powerOn: ->
-			onkyoClient.PwrOn (error, ok) ->
-				if error
-					env.logger.error error
-				if ok
-					env.logger.info ok
-				return
-
-		powerOff: ->
-			onkyoClient.PwrOff (error, ok) ->
-				if error
-					env.logger.error error
-				if ok
-					env.logger.info ok
-				return
-
 		powerStatus: ->
-			if not connected
-				onkyoClient.Connect ->
-					onkyoClient.PwrState (obj) ->
-						env.logger.info obj
-			else
-				onkyoClient.PwrState (obj) ->
-					env.logger.info obj
+			@sendCommand("POWER.STATUS")
 
 		setSource: (src) ->
-			onkyoClient.SetSource(src, cb) ->
-				env.logger.info cb
-				return
+			if not @connected? or !@connected
+				@connect()
+			else
+				@onkyoClient.SetSource(src, cb) ->
+					return
 
-		sendCommand: (cmd) ->
-			onkyoClient.SendCommand((cmd.split ".")[0], (cmd.split ".")[1])
+		sendCommand: (command) ->
+			if not @connected? or !@connected
+				@connect()
+
+			switch command
+				when 'POWER.ON'
+					@changeStateTo("on")
+				when 'POWER.OFF'
+					@changeStateTo("off")
+				when 'POWER.STATUS'
+					@powerStatus()
+				when 'VOLUME.MUTE'
+					@changeVolume("mute")
+				when 'VOLUME.UNMUTE'
+					@changeVolume("unmute")
+				when 'VOLUME.TOGGLEMUTE'
+					if not @mute
+						@changeVolume("mute")
+					else
+						@changeVolume("unmute")
+				when 'VOLUME.UP'
+					@changeVolume("up")
+				when 'VOLUME.DOWN'
+					@changeVolume("down")
+				else
+					@onkyoClient.SendCommand((command.split ".")[0], (command.split ".")[1])
+
+		setVolume: (volume) ->
+			#ToDo implement to support "change volume of <device> to <n>" actions
 
 		changeVolume: (vol) ->
 			switch vol
 				when "mute"
-					onkyoClient.Mute (error, ok) ->
+					@onkyoClient.Mute (error, ok) ->
 						if error
 							env.logger.error error
 						if ok
 							env.logger.info ok
 						return
 				when "unmute"
-					onkyoClient.UnMute (error, ok) ->
+					@onkyoClient.UnMute (error, ok) ->
 						if error
 							env.logger.error error
 						if ok
 							env.logger.info ok
 						return
 				when "up"
-					onkyoClient.VolUp (error, ok) ->
+					@onkyoClient.VolUp (error, ok) ->
 						if error
 							env.logger.error error
 						if ok
 							env.logger.info ok
 						return
 				when "down"
-					onkyoClient.VolDown (error, ok) ->
+					@onkyoClient.VolDown (error, ok) ->
 						if error
 							env.logger.error error
 						if ok
@@ -280,69 +335,63 @@ module.exports = (env) ->
 				else
 					env.logger.info "unknown command: " + vol
 
-		executeAction: (simulate) ->
-			@framework.variableManager.evaluateStringExpression(@commandTokens).then( (command) =>
-				if simulate
-					return Promise.resolve("Das ist nur eine Übung: " + command)
-				else
-					if not connected
-						@connect()
-
-					if command.startsWith('SOURCE.') and command.indexOf(".") > 0
-						source = (command.split ".")[1]
-						@setSource(source)
-					else
-						switch command
-							when 'Power.ON'
-								@powerOn()
-							when 'Power.OFF'
-								@powerOff()
-							when 'Power.STATUS'
-								@powerStatus()
-							when 'Volume.MUTE'
-								@changeVolume("mute")
-							when 'Volume.UNMUTE'
-								@changeVolume("unmute")
-							when 'Volume.UP'
-								@changeVolume("up")
-							when 'Volume DOWN'
-								@changeVolume("down")
-							else
-								@sendCommand(command)
-
-					return Promise.resolve("done")
-			)
+		destroy: ->
+			clearTimeout @_updateValueTimeout if @_updateValueTimeout?
+			super()
 
 	####### ACTION PROVIDER #######
-	class OnkyoActionProvider extends env.actions.ActionProvider
-		constructor: (@framework, @plugin)->
-			env.logger.info "OnkyoActionProvider meldet sich zum Dienst"
-			return
-
-		executeAction: (simulate) =>
-			env.logger.info "OnkyoActionProvider meldet gehorsamst: Ausführung!"
-			return
+	class SendCommandActionProvider extends env.actions.ActionProvider
+		constructor: (@framework) ->
 
 		parseAction: (input, context) =>
-			commandTokens = null
-			fullMatch = no
+			# Get all devices which have a send method
+			sendDevices = _(@framework.deviceManager.devices).values().filter(
+				(device) => device.hasAction('sendCommand')
+			).value()
 
-			setCommand = (m, tokens) => commandTokens = tokens
-			onEnd = => fullMatch = yes
+			device = null
+			command = null
+			match = null
 
+			# Match action
+			# send "<command>" to <device>
 			m = M(input, context)
-				.match("sendOnkyo ")
-				.matchStringWithVars(setCommand)
+				.match('send ')
+				.match('command ', optional: yes)
+				.matchStringWithVars((m, _command) ->
+					m.match(' to ')
+						.matchDevice(sendDevices, (m, _device) ->
+							device = _device
+							command = _command
+							match =	m.getFullMatch()
+						)
+				)
 
-			if m.hadMatch()
-				match = m.getFullMatch()
+			# Does the action match with our syntax?
+			if match?
+				assert device?
+				assert command?
+				assert typeof match is 'string'
 				return {
 					token: match
-					nextInput: input.substring(match.length)
-					actionHandler: new OnkyoActionHandler(@framework, commandTokens)
+					nextInput: input.substring match.length
+					actionHandler: new SendCommandActionHandler @framework, device, command
 				}
-			else
-				return null
+			return null
 
-	onkyoAvrPlugin = new OnkyoAvrPlugin
-	return onkyoAvrPlugin
+	####### ACTION HANDLER ######
+	class SendCommandActionHandler extends env.actions.ActionHandler
+		constructor: (@framework, @device, @command) ->
+
+		executeAction: (simulate) ->
+			return (
+				@framework.variableManager.evaluateStringExpression(@command).then((command) =>
+					if simulate
+						Promise.resolve __('would send command %s to %s', command, @device.name)
+					else
+						@device.sendCommand command
+						Promise.resolve __('sended command %s to %s', command, @device.name)
+					)
+			)
+
+	return new OnkyoAvrPlugin

@@ -20,7 +20,7 @@
   },
   "configSchema": "onkyo-config-schema.coffee",
   "dependencies": {
-    "onkyo.js": "latest"
+    "lodash": "^3.10.1"
   },
   "peerDependencies": {
     "pimatic": "0.9.*"

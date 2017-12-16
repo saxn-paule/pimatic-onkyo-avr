@@ -2,33 +2,22 @@
 ### This plugin let you control your Onkyo or Pioneer (2016+) AVR via pimatic
 
 # Action
-The provided action is called "**sendOnkyo**".
-
-# Sensor
-The provided sensor class is:
-* OnkyoSensor
-
-## Sensor attributes
-Possible attributes are:
-* volume
-* source
-* sound
+The provided action is called "**send command**".
 
 # Commands
-### sendCommand
-Has to be used in the following syntax:
+The command has to be used in the following syntax:
 ```
-[action] "[group].[command]"
+send command "[group].[command]" to {device-id}
 ```
 Sample:
 *Power the AVR on*
 ```
-sendOnkyo "POWER.ON"
+when avr-on is pressed then send command "POWER.ON" to vsx-831
 ```
 
 *Switch the AVR off*
 ```
-sendOnkyo "POWER.OFF"
+when avr-off is pressed then send command "POWER.OFF" to vsx-831
 ```
 
 ## Supported commands
@@ -121,9 +110,6 @@ sendOnkyo "POWER.OFF"
 * SOUND_MODES.Listening Mode Wrap-Around Down
 
 # Configuration
-There is only one (self explaining) configuration parameter
-* ip
-
 ### Sample Plugin Config:
 ```javascript
 {
@@ -132,39 +118,14 @@ There is only one (self explaining) configuration parameter
 ```
 
 ### Sample Device Config:
+There is only one (self explaining) configuration parameter
+* ip
 ```javascript
 {
-  "class": "OnkyoDevice",
+  "class": "OnkyoAvrDevice",
   "ip": "192.168.0.15",
   "id": "vsx-831",
   "name": "VSX-831"
-}
-```
-
-### Sample Sensor Config:
-```javascript
-{
-  "class": "OnkyoSensor",
-  "id": "avrsensor",
-  "name": "Display",
-  "attributes": [
-    {
-      "name": "volume"
-    },
-    {
-      "name": "sound"
-    },
-    {
-      "name": "source"
-    }
-  ],
-  "xAttributeOptions": [
-    {
-      "name": "volume",
-      "displaySparkline": false,
-      "hidden": false
-    }
-  ]
 }
 ```
 
