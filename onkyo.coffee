@@ -37,6 +37,9 @@ module.exports = (env) ->
 			mute:
 				description: 'the mute state'
 				type: t.string
+			power:
+				description: 'the power state'
+				type: t.string
 
 		actions:
 			turnOn:
@@ -60,7 +63,6 @@ module.exports = (env) ->
 			@name = @config.name
 			@ip = @config.ip or "192.168.0.15"
 			@interval = @config.interval || 2000
-			@power = "off"
 			@onkyoClient = null
 			@connected = false
 
@@ -69,6 +71,7 @@ module.exports = (env) ->
 			@mute = lastState?["mute"]?.value or false
 			@source = lastState?["source"]?.value or ""
 			@sound = lastState?["sound"]?.value or ""
+			@power = lastState?["power"]?.value or ""
 
 			@init()
 
@@ -81,6 +84,9 @@ module.exports = (env) ->
 						env.logger.warn "Cannot connect to " + err.address + ":" + err.port
 						@connected = false
 					else if err.code is "ECONNRESET"
+						env.logger.warn "Connection to avr device was lost!"
+						@connected = false
+					else if err.code is "EPIPE"
 						env.logger.warn "Connection to avr device was lost!"
 						@connected = false
 					else
@@ -109,7 +115,9 @@ module.exports = (env) ->
 							@_getUpdatedMute().finally( =>
 								@_getUpdatedSource().finally( =>
 									@_getUpdatedSound().finally( =>
-										@_updateValueTimeout = setTimeout(updateValue, @interval)
+										@_getUpdatedPower().finally( =>
+											@_updateValueTimeout = setTimeout(updateValue, @interval)
+										)
 									)
 								)
 							)
@@ -177,6 +185,10 @@ module.exports = (env) ->
 			if @sound? then Promise.resolve(@sound)
 			else @_getUpdatedSound("sound")
 
+		getPower: ->
+			if @power? then Promise.resolve(@power)
+			else @_getUpdatedPower("power")
+
 		_getUpdatedVolume: () =>
 			if not @volume? or @volume is -100
 				if @connected
@@ -189,6 +201,15 @@ module.exports = (env) ->
 		_getUpdatedDisplay: () =>
 			@emit "display", @display
 			return Promise.resolve @display
+
+		_getUpdatedPower: () =>
+			if not @power? or @power is ""
+				if @connected
+					@sendCommand("POWER.STATUS")
+			else
+				@emit "power", @power
+
+			return Promise.resolve @power
 
 		_getUpdatedMute: () =>
 			if not @mute? or @mute is ""
@@ -224,7 +245,10 @@ module.exports = (env) ->
 				message = msg
 
 			if message.hasOwnProperty 'PWR'
-				@power = message["PWR"]
+				if message["PWR"] or message["PWR"] is "true"
+					@power = "on"
+				else
+					@power = "off"
 
 			if message.hasOwnProperty 'MUTE'
 				@mute = message["MUTE"]
@@ -262,9 +286,6 @@ module.exports = (env) ->
 					@connected = false
 					return
 
-		powerStatus: ->
-			@sendCommand("POWER.STATUS")
-
 		setSource: (src) ->
 			if not @connected? or !@connected
 				@connect()
@@ -282,7 +303,7 @@ module.exports = (env) ->
 				when 'POWER.OFF'
 					@changeStateTo("off")
 				when 'POWER.STATUS'
-					@powerStatus()
+					@onkyoClient.SendCommand("POWER", "STATUS")
 				when 'VOLUME.MUTE'
 					@changeVolume("mute")
 				when 'VOLUME.UNMUTE'
