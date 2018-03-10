@@ -1,3 +1,6 @@
+**version 0.1.2** *released 2018-03-10*
+* fixed error on switching power state
+
 **version 0.1.1** *released 2018-02-25*
 * provided power as variable
 

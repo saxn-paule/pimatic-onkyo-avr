@@ -411,7 +411,7 @@ module.exports = (env) ->
 						Promise.resolve __('would send command %s to %s', command, @device.name)
 					else
 						@device.sendCommand command
-						Promise.resolve __('sended command %s to %s', command, @device.name)
+						Promise.resolve __('send command %s to %s', command, @device.name)
 					)
 			)
 
