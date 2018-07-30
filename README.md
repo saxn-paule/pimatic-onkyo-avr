@@ -46,6 +46,7 @@ when avr-off is pressed then send command "POWER.OFF" to vsx-831
 * SOURCE_SELECT.VIDEO6
 * SOURCE_SELECT.VIDEO7
 * SOURCE_SELECT.BD/DVD
+* SOURCE_SELECT.TV
 * SOURCE_SELECT.TAPE1
 * SOURCE_SELECT.TAPE2
 * SOURCE_SELECT.PHONO
@@ -111,16 +112,16 @@ when avr-off is pressed then send command "POWER.OFF" to vsx-831
 
 ### Multi zone support (replace X by zone number)
 *handling the volume*
-* ZONEX_AUDIO.Mute
-* ZONEX_AUDIO.UnMute
-* ZONEX_AUDIO.MuteQstn
-* ZONEX_AUDIO.Volume Up
-* ZONEX_AUDIO.Volume Down
-* ZONEX_AUDIO.Volume Up1
-* ZONEX_AUDIO.Volume Down1
+* ZONEX_AUDIO.MUTE
+* ZONEX_AUDIO.UNMUTE
+* ZONEX_AUDIO.MUTE_QSTN
+* ZONEX_AUDIO.VOL_UP
+* ZONEX_AUDIO.VOL_DOWN
+* ZONEX_AUDIO.VOL_UP1
+* ZONEX_AUDIO.VOL_DOWN1
 
 *getting the current volume*
-* ZONEX_AUDIO.Volume
+* ZONEX_AUDIO.VOL_QSTN
 
 *handling the power status*
 * ZONEX_POWER.ON
