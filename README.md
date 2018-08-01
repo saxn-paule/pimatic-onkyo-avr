@@ -26,9 +26,17 @@ when avr-off is pressed then send command "POWER.OFF" to vsx-831
 * VOLUME.UP
 * VOLUME.MUTE
 * VOLUME.UNMUTE
+* AUDIO.MUTE
+* AUDIO.UNMUTE
+* AUDIO.MUTE_QSTN
+* AUDIO.VOL_UP
+* AUDIO.VOL_DOWN
+* AUDIO.VOL_UP1
+* AUDIO.VOL_DOWN1
 
 *getting the current volume*
 * AUDIO.Volume
+* AUDIO.VOL_QSTN
 
 *handling power status*
 * POWER.ON
