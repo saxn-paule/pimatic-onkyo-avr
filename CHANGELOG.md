@@ -1,3 +1,6 @@
+**version 0.2.0** *released 2018-08-02*
+* added multi zone support
+
 **version 0.1.2** *released 2018-03-10*
 * fixed error on switching power state
 
